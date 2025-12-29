@@ -1,0 +1,9 @@
+Rows: 1421
+Period: 2020-01-03 to 2025-12-26
+Ann.Return: 2.149%
+Ann.Vol: 9.398%
+Sharpe: 0.23
+MDD: -23.29%
+Total Return: 10.11%
+Exposure: 23.72%
+Hit Ratio: 11.75%
