@@ -3,102 +3,21 @@ from datetime import datetime
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
 import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-DEFAULT_DATA_PATH = (
-    "C:\\Users\\10845\\OneDrive - 이지스자산운용\\문서\\kospi_sp500_filtered.xlsx"
-)
+from base import PATH as DEFAULT_DATA_PATH, load_data, compute_strategy, compute_summary
 
 
-def to_float(x):
-    if isinstance(x, str):
-        x = x.replace(",", "").strip()
-    return pd.to_numeric(x, errors="coerce")
-
-
-def load_data(path):
-    df = pd.read_excel(path)
-    df.columns = [c.strip() for c in df.columns]
-    df["공통날짜"] = pd.to_datetime(df["공통날짜"])
-    for c in ["kospi_t", "SPX_t-1", "VIX_t-1", "FX_t"]:
-        df[c] = df[c].apply(to_float)
-    return df.sort_values("공통날짜").set_index("공통날짜").dropna()
-
-
-def compute_strategy(df):
-    out = df.copy()
-
-    out["rK"] = np.log(out["kospi_t"]).diff()
-    out["rS"] = np.log(out["SPX_t-1"]).diff()
-    out["rFX"] = np.log(out["FX_t"]).diff()
-
-    beta_w = 60
-    out["beta"] = out["rK"].rolling(beta_w).cov(out["rS"]) / out["rS"].rolling(
-        beta_w
-    ).var()
-
-    res_w = 60
-    out["resid"] = out["rK"] - out["beta"] * out["rS"]
-    out["resid_mean"] = out["resid"].rolling(res_w).mean()
-    out["resid_std"] = out["resid"].rolling(res_w).std()
-    out["z"] = (out["resid"] - out["resid_mean"]) / out["resid_std"]
-
-    vix_w = 252
-    fx_w = 252
-    out["vix_p80"] = out["VIX_t-1"].rolling(vix_w).quantile(0.80)
-
-    out["fx_mean"] = out["rFX"].rolling(fx_w).mean()
-    out["fx_std"] = out["rFX"].rolling(fx_w).std()
-    out["fx_z"] = (out["rFX"] - out["fx_mean"]) / out["fx_std"]
-    out["fx_abs_p90"] = out["fx_z"].abs().rolling(fx_w).quantile(0.90)
-
-    out["allow"] = (out["VIX_t-1"] <= out["vix_p80"]) & (
-        out["fx_z"].abs() <= out["fx_abs_p90"]
-    )
-
-    entry = 1.0
-    exit_z = 0.2
-
-    pos = np.zeros(len(out))
-    z = out["z"].values
-    allow = out["allow"].values
-
-    for i in range(1, len(out)):
-        pos[i] = pos[i - 1]
-        if not allow[i]:
-            pos[i] = 0
-            continue
-        if pos[i - 1] == 0:
-            if z[i] <= -entry:
-                pos[i] = +1
-            elif z[i] >= +entry:
-                pos[i] = -1
-        else:
-            if abs(z[i]) <= exit_z:
-                pos[i] = 0
-
-    out["pos"] = pos
-    out["strategy_ret"] = out["pos"].shift(1) * out["rK"]
-
-    tc = 0.0002
-    out["turnover"] = out["pos"].diff().abs()
-    out["strategy_ret_net"] = out["strategy_ret"] - tc * out["turnover"]
-
-    out["equity"] = (1 + out["strategy_ret_net"].fillna(0)).cumprod()
-    return out
-
-
-def compute_metrics(df):
-    ann_factor = 252
-    mean = df["strategy_ret_net"].mean() * ann_factor
-    vol = df["strategy_ret_net"].std() * np.sqrt(ann_factor)
-    sharpe = mean / vol if vol > 0 else np.nan
-    mdd = (df["equity"] / df["equity"].cummax() - 1).min()
-    hit = (df["strategy_ret_net"] > 0).mean()
+def compute_report_metrics(df):
+    summary = compute_summary(df)
+    mean = summary["ann_return"]
+    vol = summary["ann_vol"]
+    sharpe = summary["sharpe"]
+    mdd = summary["mdd"]
+    hit = summary["hit_ratio"]
     exposure = (df["pos"] != 0).mean()
     total_return = df["equity"].iloc[-1] - 1
     return mean, vol, sharpe, mdd, hit, exposure, total_return
@@ -210,7 +129,7 @@ def main():
     )
 
     out_dir = ensure_output_dir(Path(args.out_dir))
-    metrics = compute_metrics(df)
+    metrics = compute_report_metrics(df)
     write_summary(df, metrics, annual, quarterly, out_dir)
     save_plots(df, annual, quarterly, out_dir)
 

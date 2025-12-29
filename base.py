@@ -1,16 +1,23 @@
 import pandas as pd
 import numpy as np
 
-# -----------------------------
-# 1) Load
-# -----------------------------
-# 파일이 탭/복수 공백 섞여 있을 수 있어서 engine='python' + sep 지정
-path = r"C:\Users\10845\OneDrive - 이지스자산운용\문서\kospi_sp500_filtered.xlsx"  # 같은 폴더에 두거나 전체 경로로 바꾸기
-df = pd.read_excel(path)
+# =============================
+# CONFIG
+# =============================
+PATH = r"C:\Users\10845\OneDrive - 이지스자산운용\문서\kospi_sp500_filtered.xlsx"
 
-# 컬럼 정리
-df.columns = [c.strip() for c in df.columns]
-df["공통날짜"] = pd.to_datetime(df["공통날짜"])
+DATE_COL = "공통날짜"
+REQUIRED_COLS = ["kospi_t", "SPX_t-1", "VIX_t-1", "FX_t"]
+
+BETA_W = 60
+RES_W = 60
+VIX_W = 252
+FX_W = 252
+
+ENTRY = 1.0
+EXIT = 0.2
+TC = 0.0002
+
 
 def to_float(x):
     # "6,609.3" 같은 콤마 제거
@@ -18,117 +25,146 @@ def to_float(x):
         x = x.replace(",", "").strip()
     return pd.to_numeric(x, errors="coerce")
 
-for c in ["kospi_t", "SPX_t-1", "VIX_t-1", "FX_t"]:
-    df[c] = df[c].apply(to_float)
 
-df = df.sort_values("공통날짜").set_index("공통날짜").dropna()
+def load_data(path=PATH):
+    # -----------------------------
+    # 1) Load
+    # -----------------------------
+    df = pd.read_excel(path)
 
-# -----------------------------
-# 2) Returns (log)
-# -----------------------------
-# KOSPI: t 기준 레벨 -> 일간 수익률
-df["rK"] = np.log(df["kospi_t"]).diff()
+    # 컬럼 정리
+    df.columns = [c.strip() for c in df.columns]
+    df[DATE_COL] = pd.to_datetime(df[DATE_COL])
 
-# SPX_t-1 레벨로부터 "미국 전일 수익률" 생성:
-# rS(t) = log(SPX_{t-1}/SPX_{t-2})
-df["rS"] = np.log(df["SPX_t-1"]).diff()
+    for c in REQUIRED_COLS:
+        df[c] = df[c].apply(to_float)
 
-# VIX는 레벨 자체가 필터에 유용. FX는 변화율도 필요.
-df["rFX"] = np.log(df["FX_t"]).diff()
+    return df.sort_values(DATE_COL).set_index(DATE_COL).dropna()
 
-# -----------------------------
-# 3) Rolling beta (OLS closed-form)
-# -----------------------------
+
 def rolling_beta(y, x, window):
     cov = y.rolling(window).cov(x)
     var = x.rolling(window).var()
     return cov / var
 
-BETA_W = 60
-df["beta"] = rolling_beta(df["rK"], df["rS"], BETA_W)
 
-# -----------------------------
-# 4) Residual + zscore signal
-# -----------------------------
-RES_W = 60
-df["resid"] = df["rK"] - df["beta"] * df["rS"]
+def compute_strategy(
+    df,
+    beta_w=BETA_W,
+    res_w=RES_W,
+    vix_w=VIX_W,
+    fx_w=FX_W,
+    entry=ENTRY,
+    exit_=EXIT,
+    tc=TC,
+):
+    out = df.copy()
 
-df["resid_mean"] = df["resid"].rolling(RES_W).mean()
-df["resid_std"]  = df["resid"].rolling(RES_W).std()
-df["z"] = (df["resid"] - df["resid_mean"]) / df["resid_std"]
+    # -----------------------------
+    # 2) Returns (log)
+    # -----------------------------
+    out["rK"] = np.log(out["kospi_t"]).diff()
+    out["rS"] = np.log(out["SPX_t-1"]).diff()
+    out["rFX"] = np.log(out["FX_t"]).diff()
 
-# -----------------------------
-# 5) Thresholds (walk-forward friendly defaults)
-# -----------------------------
-# VIX threshold: rolling 252일 상위 80% (과열/리스크오프)
-VIX_W = 252
-df["vix_p80"] = df["VIX_t-1"].rolling(VIX_W).quantile(0.80)
+    # -----------------------------
+    # 3) Rolling beta (OLS closed-form)
+    # -----------------------------
+    out["beta"] = rolling_beta(out["rK"], out["rS"], beta_w)
 
-# FX shock threshold: rFX의 rolling zscore 절대값이 상위 90%면 거래 중단
-FX_W = 252
-df["fx_mean"] = df["rFX"].rolling(FX_W).mean()
-df["fx_std"]  = df["rFX"].rolling(FX_W).std()
-df["fx_z"] = (df["rFX"] - df["fx_mean"]) / df["fx_std"]
-df["fx_abs_p90"] = df["fx_z"].abs().rolling(FX_W).quantile(0.90)
+    # -----------------------------
+    # 4) Residual + zscore signal
+    # -----------------------------
+    out["resid"] = out["rK"] - out["beta"] * out["rS"]
+    out["resid_mean"] = out["resid"].rolling(res_w).mean()
+    out["resid_std"] = out["resid"].rolling(res_w).std()
+    out["z"] = (out["resid"] - out["resid_mean"]) / out["resid_std"]
 
-# 필터: (VIX가 높거나) (FX 쇼크가 크면) 거래 금지
-df["allow"] = (df["VIX_t-1"] <= df["vix_p80"]) & (df["fx_z"].abs() <= df["fx_abs_p90"])
+    # -----------------------------
+    # 5) Thresholds (walk-forward friendly defaults)
+    # -----------------------------
+    out["vix_p80"] = out["VIX_t-1"].rolling(vix_w).quantile(0.80)
 
-# -----------------------------
-# 6) Trading rule (Strategy A: residual mean reversion)
-# -----------------------------
-ENTRY = 1.0
-EXIT  = 0.2
+    out["fx_mean"] = out["rFX"].rolling(fx_w).mean()
+    out["fx_std"] = out["rFX"].rolling(fx_w).std()
+    out["fx_z"] = (out["rFX"] - out["fx_mean"]) / out["fx_std"]
+    out["fx_abs_p90"] = out["fx_z"].abs().rolling(fx_w).quantile(0.90)
 
-pos = np.zeros(len(df))
-z = df["z"].values
-allow = df["allow"].values
+    out["allow"] = (out["VIX_t-1"] <= out["vix_p80"]) & (
+        out["fx_z"].abs() <= out["fx_abs_p90"]
+    )
 
-for i in range(1, len(df)):
-    # 기본: 이전 포지션 유지
-    pos[i] = pos[i-1]
+    # -----------------------------
+    # 6) Trading rule (Strategy A: residual mean reversion)
+    # -----------------------------
+    pos = np.zeros(len(out))
+    z = out["z"].values
+    allow = out["allow"].values
 
-    # 필터 꺼지면 청산
-    if not allow[i]:
-        pos[i] = 0
-        continue
-
-    # 진입/청산
-    if pos[i-1] == 0:
-        if z[i] <= -ENTRY:
-            pos[i] = +1   # long kospi
-        elif z[i] >= +ENTRY:
-            pos[i] = -1   # short kospi (선물 가능 가정)
-    else:
-        if abs(z[i]) <= EXIT:
+    for i in range(1, len(out)):
+        pos[i] = pos[i - 1]
+        if not allow[i]:
             pos[i] = 0
+            continue
+        if pos[i - 1] == 0:
+            if z[i] <= -entry:
+                pos[i] = +1
+            elif z[i] >= +entry:
+                pos[i] = -1
+        else:
+            if abs(z[i]) <= exit_:
+                pos[i] = 0
 
-df["pos"] = pos
+    out["pos"] = pos
 
-# -----------------------------
-# 7) Backtest PnL (next-day execution 가정)
-# -----------------------------
-# 신호는 t에 계산 -> t+1 수익률에 적용 (룩어헤드 방지)
-df["strategy_ret"] = df["pos"].shift(1) * df["rK"]
+    # -----------------------------
+    # 7) Backtest PnL (next-day execution 가정)
+    # -----------------------------
+    out["strategy_ret"] = out["pos"].shift(1) * out["rK"]
 
-# 간단 비용 (코스피200 선물/ETF 가정): 포지션 변동에 비례
-TC = 0.0002  # 2bp 예시
-df["turnover"] = df["pos"].diff().abs()
-df["strategy_ret_net"] = df["strategy_ret"] - TC * df["turnover"]
+    out["turnover"] = out["pos"].diff().abs()
+    out["strategy_ret_net"] = out["strategy_ret"] - tc * out["turnover"]
 
-# 누적
-df["equity"] = (1 + df["strategy_ret_net"].fillna(0)).cumprod()
+    out["equity"] = (1 + out["strategy_ret_net"].fillna(0)).cumprod()
+    return out
 
-# 요약
-ann_factor = 252
-mean = df["strategy_ret_net"].mean() * ann_factor
-vol  = df["strategy_ret_net"].std() * np.sqrt(ann_factor)
-sharpe = mean / vol if vol > 0 else np.nan
-mdd = (df["equity"] / df["equity"].cummax() - 1).min()
 
-print("Rows:", len(df))
-print(f"Ann.Return: {mean:.3%}")
-print(f"Ann.Vol:    {vol:.3%}")
-print(f"Sharpe:     {sharpe:.2f}")
-print(f"MDD:        {mdd:.2%}")
-print("Hit ratio:", (df["strategy_ret_net"] > 0).mean())
+def compute_summary(df):
+    ann_factor = 252
+    mean = df["strategy_ret_net"].mean() * ann_factor
+    vol = df["strategy_ret_net"].std() * np.sqrt(ann_factor)
+    sharpe = mean / vol if vol > 0 else np.nan
+    mdd = (df["equity"] / df["equity"].cummax() - 1).min()
+    hit = (df["strategy_ret_net"] > 0).mean()
+    return {
+        "ann_return": mean,
+        "ann_vol": vol,
+        "sharpe": sharpe,
+        "mdd": mdd,
+        "hit_ratio": hit,
+    }
+
+
+def run_backtest(path=PATH):
+    df = load_data(path)
+    df = compute_strategy(df)
+    metrics = compute_summary(df)
+    return df, metrics
+
+
+def print_summary(df, metrics):
+    print("Rows:", len(df))
+    print(f"Ann.Return: {metrics['ann_return']:.3%}")
+    print(f"Ann.Vol:    {metrics['ann_vol']:.3%}")
+    print(f"Sharpe:     {metrics['sharpe']:.2f}")
+    print(f"MDD:        {metrics['mdd']:.2%}")
+    print("Hit ratio:", metrics["hit_ratio"])
+
+
+def main():
+    df, metrics = run_backtest(PATH)
+    print_summary(df, metrics)
+
+
+if __name__ == "__main__":
+    main()

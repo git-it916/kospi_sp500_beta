@@ -2,6 +2,7 @@
 
 이 프로젝트는 KOSPI가 S&P500 대비 과도하게 움직였을 때 되돌림이 발생한다는 가정으로 거래하는 전략을 다룹니다.  
 `base.py`(단일 백테스트), `report.py`(리포트 생성), `grid_search.py`(워크포워드 그리드 서치) 기준으로 작성했습니다.
+(아직 초안이며 강건한 전략을 위해 grid search와 긴기간으로 테스트를 해볼 예정입니다)
 
 ## 파일 구성
 - `base.py`: 단일 전략 백테스트 (콘솔 요약 출력)
@@ -10,7 +11,7 @@
 - `README.md`: 설명 문서
 
 ## 데이터
-- 기본 경로: `C:\Users\10845\OneDrive - 이지스자산운용\문서\kospi_sp500_filtered.xlsx`
+- 기본 경로: `C:\Users\10845\OneDrive - 이지스자산운용\문서\kospi_sp500_filtered.xlsx` [전처리 완료]
 - 필수 컬럼
   - `공통날짜`: 날짜 (일별)
   - `kospi_t`: KOSPI 종가
