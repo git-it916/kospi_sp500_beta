@@ -17,10 +17,13 @@ Outputs:
 import warnings
 warnings.filterwarnings("ignore")
 
+from dataclasses import dataclass
+from datetime import datetime
+from itertools import product
+from pathlib import Path
+
 import pandas as pd
 import numpy as np
-from dataclasses import dataclass
-from itertools import product
 
 
 # =========================
@@ -265,15 +268,30 @@ def main():
     print("\n=== Overall OOS ===")
     print(overall)
 
-    oos.to_csv("oos_equity.csv")
-    pd.DataFrame([{
-        "train_start": r.train_start,
-        "test_start": r.test_start,
-        **r.best_params,
-        **r.test_stats
-    } for r in wf_results]).to_csv("wf_params_by_segment.csv", index=False)
+    base_dir = Path("grid_search")
+    base_dir.mkdir(exist_ok=True)
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    out_dir = base_dir / stamp
+    suffix = 1
+    while out_dir.exists():
+        out_dir = base_dir / f"{stamp}_{suffix:02d}"
+        suffix += 1
+    out_dir.mkdir()
 
-    print("Saved oos_equity.csv, wf_params_by_segment.csv")
+    oos.to_csv(out_dir / "oos_equity.csv")
+    pd.DataFrame(
+        [
+            {
+                "train_start": r.train_start,
+                "test_start": r.test_start,
+                **r.best_params,
+                **r.test_stats,
+            }
+            for r in wf_results
+        ]
+    ).to_csv(out_dir / "wf_params_by_segment.csv", index=False)
+
+    print(f"Saved oos_equity.csv, wf_params_by_segment.csv to: {out_dir}")
 
 
 if __name__ == "__main__":
