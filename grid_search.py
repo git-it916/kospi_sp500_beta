@@ -91,9 +91,10 @@ def prepare_features(df):
     df["beta"] = rolling_beta(df["rK"], df["rS"], BETA_W)
     df["resid"] = df["rK"] - df["beta"] * df["rS"]
 
-    df["resid_mean"] = df["resid"].rolling(RES_W).mean()
-    df["resid_std"]  = df["resid"].rolling(RES_W).std()
-    df["z"] = (df["resid"] - df["resid_mean"]) / df["resid_std"]
+    # 어제까지의 60일 데이터로 분포를 추정하고, 오늘 잔차를 평가
+    resid_mean = df["resid"].rolling(RES_W).mean().shift(1)
+    resid_std  = df["resid"].rolling(RES_W).std().shift(1)
+    df["z"] = (df["resid"] - resid_mean) / resid_std
 
     df["fx_mean"] = df["rFX"].rolling(Q_W).mean()
     df["fx_std"]  = df["rFX"].rolling(Q_W).std()
