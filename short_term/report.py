@@ -10,7 +10,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 # base.py의 데이터 로딩/전략 계산 함수 재사용
-from base import PATH as DEFAULT_DATA_PATH, load_data, compute_strategy, compute_summary
+from short_term.base import PATH as DEFAULT_DATA_PATH, load_data, compute_strategy, compute_summary
 
 
 def compute_report_metrics(df):

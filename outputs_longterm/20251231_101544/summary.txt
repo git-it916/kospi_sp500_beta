@@ -1,0 +1,33 @@
+[BASIC]
+Rows: 6209
+Period: 2000-01-05 to 2025-12-29
+Ann.Return: 4.066%
+Ann.Vol: 9.832%
+Sharpe: 0.41
+MDD: -26.56%
+Total Return: 141.66%
+
+[DETAIL]
+Hit Ratio: 13.08%
+Exposure: 24.13%
+Avg Turnover: 0.0457
+Best Day: 5.00%
+Worst Day: -7.27%
+Skew: -0.27
+Kurtosis: 20.23
+Calmar: 0.15
+Max DD Duration (days): 3882
+
+[EXTENDED]
+Rolling Window: 252
+Rolling Ann.Return (last): 9.618%
+Rolling Ann.Vol (last): 12.706%
+Rolling Sharpe (last): 0.76
+Monthly Win Rate: 30.45%
+
+[PARAMS]
+ENTRY: 2.0
+EXIT: 0.0
+VIX_Q: 0.85
+FX_Q: 0.9
+STOP_LOSS_MULT: 3.0
