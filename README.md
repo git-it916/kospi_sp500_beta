@@ -134,9 +134,23 @@ python grid_search.py
 - VIX/환율 필터는 리스크를 낮추지만, 수익 기회도 동시에 줄입니다.
 - 최대낙폭이 존재하므로, 단독 운용보다는 분산 포트폴리오 내 활용이 적합합니다.
 
+## 최신 업데이트 (2025-12-31)
+
+### Grid Search 최적화 완료
+- **3-Stage 최적화**: Coarse → Fine → Robustness
+- **파라미터 개선**: Entry 2.0→2.15, VIX 0.85→0.94, FX 0.90→0.96
+- **성과 향상**: Sharpe 0.41→0.75 (+83%), MDD -26.56%→-15.72% (+41%)
+
+### 주요 문서
+- **전략 명세서**: `STRATEGY_SPECIFICATION.md` (상세 기술 문서)
+- **빠른 재현 프롬프트**: `QUICK_PROMPT.txt` (원라이너 프롬프트)
+- **최적화 결과**: `OPTIMIZATION_RESULTS.md` (Grid Search 분석)
+- **Grid Search 가이드**: `GRID_SEARCH_GUIDE.md` (사용법)
+
 ## 참고
 - 리포트 요약: `outputs/YYYYMMDD_HHMMSS/summary.txt`
 - 연도별 수익률: `outputs/YYYYMMDD_HHMMSS/annual_returns.csv`
 - 분기별 수익률: `outputs/YYYYMMDD_HHMMSS/quarterly_returns.csv`
 - 워크포워드 결과: `grid_search/YYYYMMDD_HHMMSS/oos_equity.csv`
 - 워크포워드 파라미터: `grid_search/YYYYMMDD_HHMMSS/wf_params_by_segment.csv`
+- **Grid Search 개선 결과**: `grid_search_improved/YYYYMMDD_HHMMSS/`
